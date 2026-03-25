@@ -47,15 +47,21 @@ Verify that the status of the connector shows **Connected** before proceeding to
 
 ### Incident trigger
 
-1. Attach the subagent to a custom incident response plan so that the subagent auto-runs when an alert fires. Sample instruction:
+1. In the SRE Agent, select Azure Monitor as the incident platform (this is default).
 
-`Run a health check against the impacted resource.`
+2. Create an incident response plan:
+   - Include all severity levels (or at least Sev2).
+   - Include a custom response plan with the following text:
 
-2. Perform an action that triggers an alert on your resource and triggers the incident response plan. For example, if you are using Azure Monitor as the incident response plan, and you have a Web App with an alert rule that triggers when 3 HTTP 5xxs occur within 5 minutes, trigger three HTTP 500 errors on the Web app.
+   `Run a health check against the impacted resource.`
 
-In turn, the incident response plan should automatically call the service-health-monitor subagent, because the subagent specializes in running health checks.
+3. Deploy a Web App via ARM template found [here](https://github.com/gabesmsft/PerfectWebApp), and verify that the page loads successfully.
+4. On the SRE Agent, add the Web App's resource group to the list of managed resource groups.
 
-You can verify that the subagent was invoked by checking the chat (e.g. in an incident alert in SRE Agent), while or after the incident response plan processes the alert.
+4. On the Web App, do the following:
+   a. Change the foo environment variable value from **bark** to **bar**. Based on the web app's code logic, this should start to throw divide by zero exceptions.
+   b. Visit the root URL of the Web App at least 3 times within 5 minutes. This should trigger the Azure Monitor alert rule that is configured for the Web App.
+   c. After the alert fires, check for an incident in SRE Agent. The incident conversation should show that the health check was run and should show the response from the MCP tool via the service-health-monitor subagent.
 
 
 ### Scheduled task
