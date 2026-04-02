@@ -4,12 +4,17 @@ A minimal proof-of-concept showing how to use a custom subagent to invoke tools 
 
 In this demo, we will use a custom subagent that invokes tools on a custom MCP server to do resource health checks.
 
+## Step 1 — Create an SRE Agent
 
-## Step 1 — Deploy an MCP Server
+Refer to the [documentation](https://learn.microsoft.com/azure/sre-agent/create-and-set-up#deploy) about how to deploy an SRE Agent.
+
+> Note: You do not need to do the post-deployments steps mentioned in the documentation.
+
+## Step 2 — Deploy an MCP Server
 
 Refer to [this page](https://github.com/azureossd/Container-Apps/tree/main/MCP_server) to deploy an MCP server on a Container App. You will need to deploy the Container App Environment and Container App, but you can deploy each with a button click without having to deploy code or containers. Make note of the mcp-api-key you enter when creating the Container App, and the URL of the Container App after you deploy it. The MCP endpoint you will use will resemble https://*ContainerAppName*.*EnvironmentDomainPrefix*.canadacentral.azurecontainerapps.io/mcp . You will use this MCP endpoint plus the mcp-api-key in a later step.
 
-## Step 2 — Register the MCP Connector on the SRE Agent.
+## Step 3 — Register the MCP Connector on the SRE Agent.
 
 1. Go to your SRE Agent at [sre.azure.com](https://sre.azure.com)
 2. Add an MCP server **connector** that contains the following configuration: 
@@ -21,7 +26,7 @@ Refer to [this page](https://github.com/azureossd/Container-Apps/tree/main/MCP_s
 
 Verify that the status of the connector shows **Connected** before proceeding to the next steps.
 
-## Step 3 — Register the Subagent
+## Step 4 — Register the Subagent
 
 1. In the SRE agent, create a subagent from the contents of the [SubAgent-healthchecker.yaml](SREAgent/service-health-monitor.yaml)
    > Note: Based on the yaml, the name of the subagent that will get created is **service-health-monitor**.
@@ -30,7 +35,7 @@ Verify that the status of the connector shows **Connected** before proceeding to
 4. Paste the contents of `service-health-monitor.yaml`.
 5. Click **Save**.
 
-## Step 4 — Test in Playground
+### Test in Playground
 
 1. In **Subagent builder**, switch to **Test playground**.
 2. Select `service-health-monitor` from the dropdown.
@@ -47,6 +52,8 @@ Verify that the status of the connector shows **Connected** before proceeding to
 
 ### Incident trigger
 
+### Create an incident response plan
+
 1. In the SRE Agent, select Azure Monitor as the incident platform (this is default).
 
 2. Create an incident response plan:
@@ -55,10 +62,12 @@ Verify that the status of the connector shows **Connected** before proceeding to
 
    `Run a health check against the impacted resource.`
 
-3. Deploy a Web App via ARM template found [here](https://github.com/gabesmsft/PerfectWebApp), and verify that the page loads successfully.
-4. On the SRE Agent, add the Web App's resource group to the list of managed resource groups.
+### Trigger an alert
 
-4. On the Web App, do the following:
+1. Deploy a Web App via ARM template found [here](https://github.com/gabesmsft/PerfectWebApp), and verify that the page loads successfully.
+2. On the SRE Agent, add the Web App's resource group to the list of managed resource groups.
+
+3. On the Web App, do the following:
    a. Change the foo environment variable value from **bark** to **bar**. Based on the web app's code logic, this should start to throw divide by zero exceptions.
    b. Visit the root URL of the Web App at least 3 times within 5 minutes. This should trigger the Azure Monitor alert rule that is configured for the Web App.
    c. After the alert fires, check for an incident in SRE Agent. The incident conversation should show that the health check was run and should show the response from the MCP tool via the service-health-monitor subagent.
@@ -85,6 +94,4 @@ Perform a full health check cycle. You MUST use the customhealthcheckmcp MCP too
 4. If all services are healthy, confirm with a brief "All services healthy" summary.
 ```
 
-After the scheduled task runs, yYou can verify that the subagent was invoked by checking the chat (e.g. in a task run).
-
-
+After the scheduled task runs, you can verify that the subagent was invoked by checking the chat (e.g. in a task run).
