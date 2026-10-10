@@ -26,9 +26,57 @@ Refer to [this page](https://github.com/azureossd/Container-Apps/tree/main/MCP_s
 
 Verify that the status of the connector shows **Connected** before proceeding to the next steps.
 
-## Step 4 — Register the Subagent
+## Step 4 — Create the HTTP Status Parser Tool
 
-1. In the SRE agent, create a subagent from the contents of the [SubAgent-healthchecker.yaml](SREAgent/service-health-monitor.yaml)
+Create a custom Python tool named `parse-http-status` from
+[`parse_http_status.py`](SREAgent/parse_http_status.py).
+
+This deterministic helper converts an HTTP status code into structured facts,
+including the canonical reason phrase, status class, likely failure owner,
+retryability, health assessment, and optional latency band. It demonstrates a
+skill loading and invoking a custom tool and, through the skill reference in
+the custom agent, associative execution of both the skill and tool.
+
+The tool's output should resemble:
+
+```json
+{
+  "status_code": 503,
+  "valid": true,
+  "reason_phrase": "Service Unavailable",
+  "status_class": "5xx",
+  "healthy": false,
+  "failure_owner": "server",
+  "retryable": true
+}
+```
+
+The result may also contain `url`, `latency_ms`, and `latency_band` when those
+values are supplied.
+
+## Step 5 — Create the HTTP Status Interpretation Skill
+
+Add a skill named `http-status-interpretation` from
+[`SKILL.md`](SREAgent/SKILL.md). When creating the skill, select the
+`parse-http-status` custom Python tool created in Step 4.
+
+The skill tells the agent to use the parser's structured result as the source
+of truth and turn it into a concise operator-facing interpretation. The
+expected output format is:
+
+```text
+Verdict:  503 Service Unavailable - the service is up but refusing traffic.
+Owner:    Server side. Retry is worth attempting; this is usually transient.
+Next:     Check instance health and whether a deployment is currently rolling.
+```
+
+Seeing this output format after a non-2xx probe verifies that the interpretation
+instructions were applied. The corresponding structured status fields in the
+execution details verify that the custom Python tool was invoked.
+
+## Step 6 — Register the Subagent
+
+1. In the SRE agent, create a subagent from the contents of [`service-health-monitor.yaml`](SREAgent/service-health-monitor.yaml).
    > Note: Based on the yaml, the name of the subagent that will get created is **service-health-monitor**.
 2. Click **Create** → **Subagent**.
 3. Switch to the **YAML** tab.
@@ -45,8 +93,46 @@ Verify that the status of the connector shows **Connected** before proceeding to
    * `"Batch check these URLs: https://bing.com, https://httpbin.org/status/500, https://example.com"`
    * `"Run a full health check of my Azure App Services and this endpoint {replace with an https endpoint}"`
 
+For a non-2xx result, verify the complete invocation chain by looking for:
 
-> Note: The response results include the following JSON: `"custom_flag":"returned by the custom health check MCP server tool"`
+- The MCP health-check result includes
+  `"custom_flag":"returned by the custom health check MCP server tool"`.
+- The Python tool result includes fields such as `status_code`,
+  `reason_phrase`, `failure_owner`, and `retryable`.
+- The response includes the skill's `Verdict`, `Owner`, and `Next` lines.
+- The response ends with:
+  `This analysis was brought to you courtesy of the custom healthchecker subagent!`
+
+Together, these signals verify that the MCP tool, custom Python tool, skill,
+and custom agent were invoked. The primary end-to-end test can also be run by
+triggering an incident response plan associated with the custom agent.
+
+### Test Automatic Handoff
+
+The agent's `handoff_description` allows the main chat experience to select
+the custom agent based on the request. To test this routing, send the following
+message in chat without using the `/agent` command or explicitly selecting the
+custom agent. Replace the placeholders with the Web App and resource group to
+test:
+
+```text
+Check the health of the <web app name> Web App in the <resource group name> resource group by probing HTTP endpoints and querying Azure Resource Health. Produces status reports with recommendations.
+```
+
+Verify that the response contains the custom-agent footer shown above. For a
+non-2xx endpoint, also verify the parser fields and the three-line skill output.
+
+### Test Failure Scenarios
+
+Useful failure-mode tests include:
+
+- Stop the remote MCP server to make the connector and associated MCP tools
+  unavailable.
+- Disable required tools in the portal.
+- Disable the `http-status-interpretation` skill.
+
+In each case, confirm that the response reports the unavailable dependency
+instead of presenting a successful health assessment.
 
 ## Optional: Wire Up Triggers
 
@@ -57,10 +143,8 @@ Verify that the status of the connector shows **Connected** before proceeding to
 1. In the SRE Agent, select Azure Monitor as the incident platform (this is default).
 
 2. Create an incident response plan:
-   - Include all severity levels (or at least Sev2).
-   - Include a custom response plan with the following text:
-
-   `Run a health check against the impacted resource.`
+   - Include severity 2.
+   - Attach the custom agent to the incident response plan.
 
 ### Trigger an alert
 
